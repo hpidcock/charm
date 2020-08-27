@@ -164,6 +164,7 @@ type DeploymentMode string
 const (
 	ModeOperator DeploymentMode = "operator"
 	ModeWorkload DeploymentMode = "workload"
+	ModeEmbedded DeploymentMode = "embedded"
 )
 
 // ServiceType defines a service type.
@@ -1118,6 +1119,7 @@ var deploymentSchema = schema.FieldMap(
 		"mode": schema.OneOf(
 			schema.Const(string(ModeOperator)),
 			schema.Const(string(ModeWorkload)),
+			schema.Const(string(ModeEmbedded)),
 		),
 		"service": schema.OneOf(
 			schema.Const(string(ServiceCluster)),
