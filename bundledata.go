@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -286,6 +287,16 @@ type ApplicationSpec struct {
 	// Expose holds whether the application must be exposed.
 	Expose bool `bson:",omitempty" json:",omitempty" yaml:",omitempty"`
 
+	// ExposedEndpoints defines on a per-endpoint basis, the list of space
+	// names and/or CIDRs that should be able to access the ports opened
+	// for an endpoint once the application is exposed. The keys of the map
+	// are endpoint names or the special empty ("") value that is used as a
+	// placeholder for referring to all endpoints.
+	//
+	// This attribute cannot be used in tandem with the 'expose: true'
+	// flag; a validation error will be raised if both fields are specified.
+	ExposedEndpoints map[string]ExposedEndpointSpec `bson:"exposed-endpoints,omitempty" json:"exposed-endpoints,omitempty" yaml:"exposed-endpoints,omitempty" source:"overlay-only"`
+
 	// Options holds the configuration values
 	// to apply to the new application. They should
 	// be compatible with the charm configuration.
@@ -323,6 +334,20 @@ type ApplicationSpec struct {
 	// cloud credentials and must therefore be explicitly trusted by the
 	// operator before it can be deployed.
 	RequiresTrust bool `bson:"trust,omitempty" json:"trust,omitempty" yaml:"trust,omitempty"`
+}
+
+// ExpoExposedEndpointSpec describes the expose parameters for an application
+// endpoint.
+type ExposedEndpointSpec struct {
+	// ExposeToSpaces contains a list of spaces that should be able to
+	// access the application ports opened for an endpoint when the
+	// application is exposed.
+	ExposeToSpaces []string `bson:"expose-to-spaces,omitempty" json:"expose-to-spaces,omitempty" yaml:"expose-to-spaces,omitempty" source:"overlay-only"`
+
+	// ExposeToCIDRs contains a list of CIDRs that should be able to access
+	// the application ports opened for an endpoint when the application is
+	// exposed.
+	ExposeToCIDRs []string `bson:"expose-to-cidrs,omitempty" json:"expose-to-cidrs,omitempty" yaml:"expose-to-cidrs,omitempty" source:"overlay-only"`
 }
 
 // OfferSpec describes an offer for a particular application.
@@ -708,6 +733,27 @@ func (verifier *bundleDataVerifier) verifyApplications() {
 			verifier.verifyKubernetesPlacement(name, app.To)
 		} else {
 			verifier.verifyPlacement(name, app.NumUnits, app.To)
+		}
+
+		// Check expose parameters. We do not allow both the expose and
+		// the exposed-endpoints fields to be specified at the same
+		// time. Otherwise, an operator might export a 2.9 bundle
+		// containing an exposed application with endpoint-specific
+		// rules and them import it into a 2.8 controller which is not
+		// aware of this field causing the application to be exposed
+		// to 0.0.0.0/0!
+		if len(app.ExposedEndpoints) != 0 {
+			if app.Expose {
+				verifier.addErrorf(`exposed-endpoints cannot be specified together with "exposed:true" in application %q as this poses a security risk when deploying bundles to older controllers`, name)
+			} else {
+				for epName, expDetails := range app.ExposedEndpoints {
+					for _, cidr := range expDetails.ExposeToCIDRs {
+						if _, _, err := net.ParseCIDR(cidr); err != nil {
+							verifier.addErrorf("invalid CIDR %q for expose to CIDRs field for endpoint %q in application %q", cidr, epName, name)
+						}
+					}
+				}
+			}
 		}
 	}
 }

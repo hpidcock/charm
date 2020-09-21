@@ -30,6 +30,12 @@ func (*bundleDataOverlaySuite) TestExtractBaseAndOverlayParts(c *gc.C) {
 applications:
   apache2:
     charm: cs:apache2-26
+    exposed-endpoints:
+      www:
+        expose-to-spaces:
+          - dmz
+        expose-to-cidrs:
+          - 13.37.0.0/16
     offers:
       my-offer:
         endpoints:
@@ -60,6 +66,12 @@ series: bionic
 	expOverlay := `
 applications:
   apache2:
+    exposed-endpoints:
+      www:
+        expose-to-spaces:
+        - dmz
+        expose-to-cidrs:
+        - 13.37.0.0/16
     offers:
       my-offer:
         endpoints:
@@ -743,6 +755,41 @@ applications:
       opt1: lorem ipsum
       opt2: dolor
       opt3: dolor
+`
+
+	c.Assert("\n"+string(merged), gc.Equals, exp)
+}
+
+func (*bundleDataOverlaySuite) TestBundleDataSourceWithEmptyOverlay(c *gc.C) {
+	base := `
+applications:
+  django:
+    charm: cs:django
+`
+
+	overlays := `
+---
+`
+
+	baseDir := c.MkDir()
+	mustWriteFile(c, filepath.Join(baseDir, "bundle.yaml"), base)
+
+	ovlDir := c.MkDir()
+	mustWriteFile(c, filepath.Join(ovlDir, "overlays.yaml"), overlays)
+
+	bd, err := charm.ReadAndMergeBundleData(
+		mustCreateLocalDataSource(c, filepath.Join(baseDir, "bundle.yaml")),
+		mustCreateLocalDataSource(c, filepath.Join(ovlDir, "overlays.yaml")),
+	)
+	c.Assert(err, gc.IsNil)
+
+	merged, err := yaml.Marshal(bd)
+	c.Assert(err, gc.IsNil)
+
+	exp := `
+applications:
+  django:
+    charm: cs:django
 `
 
 	c.Assert("\n"+string(merged), gc.Equals, exp)
